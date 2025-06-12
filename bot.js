@@ -75,6 +75,12 @@ bot.onText(/\/start/, async (msg) => {
     await ensureUser(chatId, msg.from.username);
     const text = homeText;
     const keyboard = homeKeyboard;
+    bot.sendMessage(chatId, "Welcome To Hunter Bot!", {
+        reply_markup: {
+            remove_keyboard: true
+        }
+    });
+
     sendOrEdit(chatId, text, keyboard);
 
 
