@@ -1,0 +1,8 @@
+config
+package-lock.json
+node_modules
+output
+database
+test_captcha
+captchas
+.env
