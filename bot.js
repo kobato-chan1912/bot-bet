@@ -30,7 +30,7 @@ const homeKeyboard = [
 
 
 
-function sendOrEdit(chatId, text, keyboard, messageId = null) {
+async function sendOrEdit(chatId, text, keyboard, messageId = null) {
     try {
         const options = {
             parse_mode: 'Markdown',
@@ -38,18 +38,25 @@ function sendOrEdit(chatId, text, keyboard, messageId = null) {
         };
 
         if (messageId) {
-            return bot.editMessageText(text, {
-                chat_id: chatId,
-                message_id: messageId,
-                ...options
-            });
+            try {
+                return await bot.editMessageText(text, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    ...options
+                });
+            } catch (error) {
+                if (error.response && error.response.body && error.response.body.description === 'Bad Request: message is not modified') {
+                    // Bỏ qua lỗi này
+                    return;
+                }
+                throw error;
+            }
         } else {
             return bot.sendMessage(chatId, text, options);
         }
     } catch (error) {
-
+        // Xử lý các lỗi khác nếu cần
     }
-
 }
 
 function backKeyboard(route) {
