@@ -3,11 +3,21 @@ const db = require("./database.js")
 const usersState = {};
 const checkBankTransactions = require('./cron.js');
 
-const homeText = `🎉 Chào mừng đến Bot Hunter Code 
+const homeText = `🎁 HỖ TRỢ NHẬP CODE – HOÀN 100% CHO KHÁCH MỚI 🎁
+Áp dụng cho nhà cái:
+F8BET | SHBET | 8KBET | MB66 | NEW88 | JUN1 | JUN2 | J88
 
-⏳ Mã không có sẵn – phải canh, phải săn – nhưng lời thì thật!
-
-👉 Muốn làm gì thì chọn bên dưới bạn nhé!`;
+🧧 CODE 8KBET ~ J88 (RANDOM: 18 / 28 / 38)
+💸 Chỉ 5K / 1 lần nhập
+🎁 CODE giá trị từ: 18K – 85K
+✅ Giá rẻ nhất thị trường
+✅ Uy tín tuyệt đối – Không lừa đảo
+🔈 ƯU ĐÃI ĐẶC BIỆT
+♻️ Auto tự động hoàn cho tài khoản bị lạm dụng .  
+📩 Liên hệ hỗ trợ: [@BeNi2kk]
+🛒 Mua code tại BOT: [@HUNTER_CODE_DEN_BOT]
+🔈THEO DÕI KÊNH https://t.me/+8FWzZ93BMQM2YTE1
+`;
 
 
 
@@ -394,8 +404,8 @@ bot.on('message', async (msg) => {
 
 
             if (run) {
-                // Refund 70% giá game
-                let refundAmount = game.price * 0.7;
+                // Refund 80% giá game
+                let refundAmount = game.price * 0.8;
                 await db('users').where('id', '=', user.id).increment('balance', refundAmount);
                 await db('transactions').insert({
                     user_id: user.id,
