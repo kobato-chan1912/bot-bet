@@ -94,7 +94,7 @@ bot.on('callback_query', async (query) => {
 
         const keyboard = [];
 
-        let games = await db('games').get();
+        let games = await db('games').where("enable", "=", 1).get();
         for (let i = 0; i < games.length; i += 2) {
             const row = [];
             row.push({ text: "️⚽ " + games[i].name, callback_data: `selectgame_${games[i].id}` });
