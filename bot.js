@@ -195,10 +195,11 @@ bot.on('callback_query', async (query) => {
             .where('user_id', '=', user.id)
             .where('status', '=', 1)
             .orderBy('created_at', 'desc')
+            .limit(10)
             .get();
 
 
-        let text = `📜 Lịch sử giao dịch:\n\n`;
+        let text = `📜 10 giao dịch gần đây:\n\n`;
         if (list.length === 0) text += `Không có giao dịch nào.`;
         else {
             for (const tx of list) {
@@ -210,8 +211,9 @@ bot.on('callback_query', async (query) => {
         const runs = await db('runs')
             .where('user_id', '=', user.id)
             .orderBy('created_at', 'desc')
+            .limit(10)
             .get();
-        text += `\n📊 Lịch sử chạy:\n\n`
+        text += `\n📊 Lịch sử chạy (10 acc gần nhất):\n\n`
         if (runs.length === 0) text += `Không có lịch sử chạy nào.`;
         else {
             for (const run of runs) {
@@ -569,9 +571,9 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
         const mention = args.trim();
         const target = await getUserByMention(mention);
         if (!target) return bot.sendMessage(chatId, "❗ Không tìm thấy user.");
-        const logs = await db('transactions').where('user_id', '=', target.id).orderBy('created_at', 'desc').get();
+        const logs = await db('transactions').where('user_id', '=', target.id).orderBy('created_at', 'desc').limit(10).get();
         if (!logs.length) return bot.sendMessage(chatId, "❗ Không có log giao dịch.");
-        let text = `📜 Giao dịch gần đây của @${target.telegram_username}:\n\n`;
+        let text = `📜 10 Giao dịch gần đây của @${target.telegram_username}:\n\n`;
         for (const log of logs) {
             text += `${log.amount > 0 ? '➕' : '➖'} ${log.amount.toLocaleString()}đ - ${new Date(log.created_at).toLocaleString()} (${log.note || ''})\n`;
         }
@@ -579,8 +581,9 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
         const runs = await db('runs')
             .where('user_id', '=', target.id)
             .orderBy('created_at', 'desc')
+            .limit(10)
             .get();
-        text += `\n📊 Lịch sử chạy:\n\n`
+        text += `\n📊 Lịch sử chạy 10 acc gần nhất:\n\n`
         if (runs.length === 0) text += `Không có lịch sử chạy nào.`;
         else {
             for (const run of runs) {
