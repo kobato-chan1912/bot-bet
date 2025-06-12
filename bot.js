@@ -21,20 +21,25 @@ const homeKeyboard = [
 
 
 function sendOrEdit(chatId, text, keyboard, messageId = null) {
-    const options = {
-        parse_mode: 'Markdown',
-        reply_markup: { inline_keyboard: keyboard }
-    };
+    try {
+        const options = {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: keyboard }
+        };
 
-    if (messageId) {
-        return bot.editMessageText(text, {
-            chat_id: chatId,
-            message_id: messageId,
-            ...options
-        });
-    } else {
-        return bot.sendMessage(chatId, text, options);
+        if (messageId) {
+            return bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: messageId,
+                ...options
+            });
+        } else {
+            return bot.sendMessage(chatId, text, options);
+        }
+    } catch (error) {
+
     }
+
 }
 
 function backKeyboard(route) {
@@ -53,9 +58,8 @@ async function ensureUser(telegramId, username) {
         });
     }
 
-    if (exists && exists.telegram_user_id == null)
-    {
-         await db('users').where("telegram_username", "=", username).update({
+    if (exists && exists.telegram_user_id == null) {
+        await db('users').where("telegram_username", "=", username).update({
             telegram_user_id: telegramId,
         });
     }
