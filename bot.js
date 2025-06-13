@@ -33,6 +33,8 @@ async function sendMessage(chatId, text, options = {}) {
         return bot.sendMessage(chatId, text, options)
     } catch (error) {
 
+        return;
+
     }
 }
 
@@ -51,11 +53,7 @@ async function sendOrEdit(chatId, text, keyboard, messageId = null) {
                     ...options
                 });
             } catch (error) {
-                if (error.response && error.response.body && error.response.body.description === 'Bad Request: message is not modified') {
-                    // Bỏ qua lỗi này
-                    return;
-                }
-                throw error;
+                return;
             }
         } else {
             return sendMessage(chatId, text, options);
