@@ -33,7 +33,7 @@ async function sendMessage(chatId, text, options = {}) {
         return bot.sendMessage(chatId, text, options)
     } catch (error) {
 
-        return;
+
 
     }
 }
@@ -53,7 +53,7 @@ async function sendOrEdit(chatId, text, keyboard, messageId = null) {
                     ...options
                 });
             } catch (error) {
-               return;
+                return;
             }
         } else {
             return sendMessage(chatId, text, options);
@@ -168,11 +168,17 @@ bot.on('callback_query', async (query) => {
 
         if (data === 'balance') {
             const balance = user?.balance || 0;
-            return bot.editMessageText(`💰 Số dư hiện tại của bạn là: ${balance.toLocaleString()}đ`, {
-                chat_id: chatId,
-                message_id: messageId,
-                reply_markup: backKeyboard("info")
-            });
+
+            try {
+                return bot.editMessageText(`💰 Số dư hiện tại của bạn là: ${balance.toLocaleString()}đ`, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: backKeyboard("info")
+                });
+            } catch (error) {
+
+            }
+
         }
 
         if (data === 'deposit') {
@@ -242,11 +248,17 @@ bot.on('callback_query', async (query) => {
                 }
             }
 
-            return bot.editMessageText(text, {
-                chat_id: chatId,
-                message_id: messageId,
-                reply_markup: backKeyboard("info")
-            });
+            try {
+                return bot.editMessageText(text, {
+                    chat_id: chatId,
+                    message_id: messageId,
+                    reply_markup: backKeyboard("info")
+                });
+            } catch (error) {
+
+            }
+
+
         }
 
 
