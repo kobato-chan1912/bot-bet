@@ -53,7 +53,7 @@ async function sendOrEdit(chatId, text, keyboard, messageId = null) {
                     ...options
                 });
             } catch (error) {
-                return;
+               return;
             }
         } else {
             return sendMessage(chatId, text, options);
