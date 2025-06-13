@@ -325,130 +325,135 @@ bot.on('callback_query', async (query) => {
 
 
 bot.on('message', async (msg) => {
-    const chatId = msg.chat.id;
-    const user = await db('users').where('telegram_user_id', '=', chatId).first();
-    const text = msg.text;
-    if (text.startsWith('/')) return; // Ignore commands
-    let state = usersState[chatId];
 
-    if (state && state.startsWith('addaccount_')) {
-        let gameId = state.split('_')[1];
-        let game = await db('games').where('id', '=', gameId).first();
-        if (!game || !user) return;
+    try {
+        const chatId = msg.chat.id;
+        const user = await db('users').where('telegram_user_id', '=', chatId).first();
+        const text = msg.text;
+        if (text.startsWith('/')) return; // Ignore commands
+        let state = usersState[chatId];
 
-        // Parse accounts
-        let lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-        let accounts = [];
-        if (game.is_need_bank) {
-            // Each line: username bank
-            for (let line of lines) {
-                let [username, bank] = line.split(/\s+/);
-                if (username && bank) {
-                    accounts.push({ username, bank });
+        if (state && state.startsWith('addaccount_')) {
+            let gameId = state.split('_')[1];
+            let game = await db('games').where('id', '=', gameId).first();
+            if (!game || !user) return;
+
+            // Parse accounts
+            let lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            let accounts = [];
+            if (game.is_need_bank) {
+                // Each line: username bank
+                for (let line of lines) {
+                    let [username, bank] = line.split(/\s+/);
+                    if (username && bank) {
+                        accounts.push({ username, bank });
+                    }
+                }
+            } else {
+                // Each line: username only
+                for (let line of lines) {
+                    accounts.push({ username: line });
                 }
             }
-        } else {
-            // Each line: username only
-            for (let line of lines) {
-                accounts.push({ username: line });
-            }
-        }
 
-        // format accounts, remove duplicates
-        accounts = accounts.map(acc => ({
-            username: acc.username,
-            bank: acc.bank ? acc.bank : null
-        })).filter((acc, index, self) =>
-            index === self.findIndex(a => a.username === acc.username && a.bank === acc.bank)
-        );
-
-        if (accounts.length === 0) {
-            await sendMessage(chatId, '❗ Định dạng tài khoản không hợp lệ. Vui lòng thử lại.');
-            return;
-        }
-
-        // Check balance
-        let totalPrice = accounts.length * game.price;
-        if (user.balance < totalPrice) {
-            await sendMessage(chatId, `❗ Số dư không đủ. Bạn cần ${totalPrice.toLocaleString()}đ để thêm ${accounts.length} tài khoản.`);
-            return;
-        }
-
-        // Add to runs and deduct balance
-        for (let acc of accounts) {
-
-            await db('transactions').insert({
-                user_id: user.id,
-                amount: -game.price,
-                status: 1,
-                created_at: new Date(),
-                note: `Mua code ${acc.username} cho ${game.name}`
-            });
-
-
-            await db('runs').insert({
-                user_id: user.id,
-                game_id: game.id,
+            // format accounts, remove duplicates
+            accounts = accounts.map(acc => ({
                 username: acc.username,
-                bank: acc.bank || null,
-                created_at: new Date()
-            });
-        }
-        await db('users').where('id', '=', user.id).update({
-            balance: user.balance - totalPrice
-        });
+                bank: acc.bank ? acc.bank : null
+            })).filter((acc, index, self) =>
+                index === self.findIndex(a => a.username === acc.username && a.bank === acc.bank)
+            );
 
-        await sendMessage(chatId, `✅ Đã thêm ${accounts.length} tài khoản cho game "${game.name}". Số dư còn lại: ${(user.balance - totalPrice).toLocaleString()}đ`);
-        usersState[chatId] = null;
-    }
+            if (accounts.length === 0) {
+                await sendMessage(chatId, '❗ Định dạng tài khoản không hợp lệ. Vui lòng thử lại.');
+                return;
+            }
 
+            // Check balance
+            let totalPrice = accounts.length * game.price;
+            if (user.balance < totalPrice) {
+                await sendMessage(chatId, `❗ Số dư không đủ. Bạn cần ${totalPrice.toLocaleString()}đ để thêm ${accounts.length} tài khoản.`);
+                return;
+            }
 
-    if (state && state.startsWith('refund_')) {
-        let gameId = state.split('_')[1];
-        let game = await db('games').where('id', '=', gameId).first();
-        if (!game || !user) return;
+            // Add to runs and deduct balance
+            for (let acc of accounts) {
 
-        // Parse accounts
-        let lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-
-        let refunded = 0;
-        let notFound = [];
-        for (let username of lines) {
-            // Tìm run chưa done
-            let run = await db('runs')
-                .where('user_id', '=', user.id)
-                .where('game_id', '=', game.id)
-                .where('username', '=', username)
-                .whereRaw("COALESCE(status, '') NOT IN (?, ?)", ['done', 'refunded'])
-                .first();
-
-
-            if (run) {
-                // Refund 80% giá game
-                let refundAmount = game.price * 0.8;
-                await db('users').where('id', '=', user.id).increment('balance', refundAmount);
                 await db('transactions').insert({
                     user_id: user.id,
-                    amount: refundAmount,
+                    amount: -game.price,
                     status: 1,
                     created_at: new Date(),
-                    note: `Refund tài khoản ${username} game ${game.name}`
+                    note: `Mua code ${acc.username} cho ${game.name}`
                 });
-                // Đánh dấu run đã refund (nếu muốn)
-                await db('runs').where('id', '=', run.id).update({ status: 'refunded' });
-                refunded++;
-            } else {
-                notFound.push(username);
+
+
+                await db('runs').insert({
+                    user_id: user.id,
+                    game_id: game.id,
+                    username: acc.username,
+                    bank: acc.bank || null,
+                    created_at: new Date()
+                });
             }
+            await db('users').where('id', '=', user.id).update({
+                balance: user.balance - totalPrice
+            });
+
+            await sendMessage(chatId, `✅ Đã thêm ${accounts.length} tài khoản cho game "${game.name}". Số dư còn lại: ${(user.balance - totalPrice).toLocaleString()}đ`);
+            usersState[chatId] = null;
         }
 
-        let msg = `✅ Đã refund ${refunded} tài khoản (${(refunded * Math.floor(game.price * 0.7)).toLocaleString()}đ) cho game ${game.name}.`;
-        if (notFound.length) {
-            msg += `\n\n❗ Không tìm thấy hoặc đã done/refunded: ${notFound.join(', ')}`;
+
+        if (state && state.startsWith('refund_')) {
+            let gameId = state.split('_')[1];
+            let game = await db('games').where('id', '=', gameId).first();
+            if (!game || !user) return;
+
+            // Parse accounts
+            let lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
+            let refunded = 0;
+            let notFound = [];
+            for (let username of lines) {
+                // Tìm run chưa done
+                let run = await db('runs')
+                    .where('user_id', '=', user.id)
+                    .where('game_id', '=', game.id)
+                    .where('username', '=', username)
+                    .whereRaw("COALESCE(status, '') NOT IN (?, ?)", ['done', 'refunded'])
+                    .first();
+
+
+                if (run) {
+                    // Refund 80% giá game
+                    let refundAmount = game.price * 0.8;
+                    await db('users').where('id', '=', user.id).increment('balance', refundAmount);
+                    await db('transactions').insert({
+                        user_id: user.id,
+                        amount: refundAmount,
+                        status: 1,
+                        created_at: new Date(),
+                        note: `Refund tài khoản ${username} game ${game.name}`
+                    });
+                    // Đánh dấu run đã refund (nếu muốn)
+                    await db('runs').where('id', '=', run.id).update({ status: 'refunded' });
+                    refunded++;
+                } else {
+                    notFound.push(username);
+                }
+            }
+
+            let msg = `✅ Đã refund ${refunded} tài khoản (${(refunded * Math.floor(game.price * 0.7)).toLocaleString()}đ) cho game ${game.name}.`;
+            if (notFound.length) {
+                msg += `\n\n❗ Không tìm thấy hoặc đã done/refunded: ${notFound.join(', ')}`;
+            }
+            await sendMessage(chatId, msg);
+            usersState[chatId] = null;
         }
-        await sendMessage(chatId, msg);
-        usersState[chatId] = null;
-    }
+    } catch (error) {}
+
+
 });
 
 
