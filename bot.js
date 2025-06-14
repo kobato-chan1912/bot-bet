@@ -67,7 +67,7 @@ function backKeyboard(route) {
 
 async function ensureUser(telegramId, username) {
     if (!username) {
-        console.error("User does not have a Telegram username!");
+        // console.error("User does not have a Telegram username!");
         return;  // hoặc throw error, hoặc xử lý theo logic của bạn
     }
 
