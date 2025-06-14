@@ -790,6 +790,7 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
 
 });
 
+bot.on("polling_error", (err) => {});
 
 
 // Crawl bank transactions every 5 minutes
