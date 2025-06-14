@@ -70,6 +70,11 @@ function backKeyboard(route) {
 }
 
 async function ensureUser(telegramId, username) {
+    if (!username) {
+        console.error("User does not have a Telegram username!");
+        return;  // hoặc throw error, hoặc xử lý theo logic của bạn
+    }
+
     const exists = await db('users').where('telegram_username', '=', username).first();
     if (!exists) {
         await db('users').insert({
