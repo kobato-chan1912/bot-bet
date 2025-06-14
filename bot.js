@@ -2,6 +2,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const db = require("./database.js")
 const usersState = {};
 const checkBankTransactions = require('./cron.js');
+const ExcelJS = require('exceljs');
 
 const homeText = `🎁 HỖ TRỢ NHẬP CODE – HOÀN 100% CHO KHÁCH MỚI 🎁
 Áp dụng cho nhà cái:
@@ -31,7 +32,76 @@ const homeKeyboard = [
 async function sendMessage(chatId, text, options = {}) {
     try {
         return await bot.sendMessage(chatId, text, options)
-    } catch (error) {}
+    } catch (error) { }
+}
+
+
+async function getHistoryGames(chatId, user) {
+    const runs = await db('runs')
+        .where('user_id', '=', user.id)
+        .orderBy('created_at', 'desc')
+        .get();
+
+    if (!runs.length) {
+        return sendMessage(chatId, "❗ Không có lịch sử chạy nào.");
+    }
+
+    // Lấy danh sách gameId mà user có dữ liệu
+    const gameIds = [...new Set(runs.map(r => r.game_id))];
+    const games = await db('games').whereIn('id', gameIds).get();
+
+    // Chuẩn bị workbook
+    const workbook = new ExcelJS.Workbook();
+
+    for (const game of games) {
+        const sheet = workbook.addWorksheet(game.name);
+
+        // Header
+        sheet.columns = [
+            { header: 'Tên tài khoản', key: 'username', width: 30 },
+            { header: 'Trạng thái', key: 'status', width: 15 },
+            { header: 'Note', key: 'note', width: 30 },
+            { header: 'Thời gian thêm', key: 'created_at', width: 22 }
+        ];
+
+        // Font cho toàn bộ sheet
+        sheet.eachRow((row) => {
+            row.font = { name: 'Times New Roman', size: 13 };
+        });
+
+        // Lấy các run của game này
+        const runsOfGame = runs.filter(r => r.game_id === game.id);
+
+        for (const run of runsOfGame) {
+            sheet.addRow({
+                username: run.username,
+                status: run.status || 'Đang chạy',
+                note: run.note,
+                created_at: new Date(run.created_at).toLocaleString()
+            });
+        }
+
+        // Set font cho header và các row
+        sheet.eachRow((row, rowNumber) => {
+            row.font = { name: 'Arial', size: 13 };
+        });
+    }
+
+    // Ghi file ra buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    const filename = `lich_su_chay_${user.telegram_username || user.id}_${Date.now()}.xlsx`;
+
+    await bot.sendDocument(
+        chatId,
+        Buffer.from(buffer),
+        {
+            caption: "\n\n📊 Lịch sử chạy của " + user.telegram_username
+        },
+        {
+            filename, // filename phải kết thúc bằng .xlsx, không có .zip
+            contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+    );
 }
 
 async function sendOrEdit(chatId, text, keyboard, messageId = null) {
@@ -73,11 +143,14 @@ async function ensureUser(telegramId, username) {
 
     const exists = await db('users').where('telegram_username', '=', username).first();
     if (!exists) {
-        await db('users').insert({
-            telegram_user_id: telegramId,
-            telegram_username: username,
-            balance: 0
-        });
+        try {
+            await db('users').insert({
+                telegram_user_id: telegramId,
+                telegram_username: username,
+                balance: 0
+            });
+        } catch (error) {}
+
     }
 
     if (exists && exists.telegram_user_id == null) {
@@ -158,7 +231,8 @@ bot.on('callback_query', async (query) => {
             const keyboard = [
                 [{ text: '💰 Xem số dư', callback_data: 'balance' }],
                 [{ text: '🏦 Nạp tiền', callback_data: 'deposit' }],
-                [{ text: '📜 Lịch sử giao dịch', callback_data: 'history' }],
+                [{ text: '📜 Lịch sử nạp', callback_data: 'history' }],
+                [{ text: '📜 Lịch sử chạy', callback_data: 'history_games' }],
                 [{ text: '🔙 Quay lại', callback_data: 'back_home' }]
             ];
             return sendOrEdit(chatId, text, keyboard, messageId);
@@ -235,19 +309,6 @@ bot.on('callback_query', async (query) => {
             }
 
             // lịch sử chạy 
-            const runs = await db('runs')
-                .where('user_id', '=', user.id)
-                .orderBy('created_at', 'desc')
-                .limit(10)
-                .get();
-            text += `\n📊 Lịch sử chạy (10 acc gần nhất):\n\n`
-            if (runs.length === 0) text += `Không có lịch sử chạy nào.`;
-            else {
-                for (const run of runs) {
-                    const game = await db('games').where('id', '=', run.game_id).first();
-                    text += `🎮 ${game.name} | ${run.username} | ${run.status ?? 'Đang chạy'}\n`;
-                }
-            }
 
             try {
                 return bot.editMessageText(text, {
@@ -255,11 +316,19 @@ bot.on('callback_query', async (query) => {
                     message_id: messageId,
                     reply_markup: backKeyboard("info")
                 });
+
+
+
             } catch (error) {
 
             }
 
 
+        }
+
+
+        if (data === 'history_games') {
+            await getHistoryGames(chatId, user)
         }
 
 
@@ -623,21 +692,9 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
                 text += `${log.amount > 0 ? '➕' : '➖'} ${log.amount.toLocaleString()}đ - ${new Date(log.created_at).toLocaleString()} (${log.note || ''})\n`;
             }
 
-            const runs = await db('runs')
-                .where('user_id', '=', target.id)
-                .orderBy('created_at', 'desc')
-                .limit(10)
-                .get();
-            text += `\n📊 Lịch sử chạy 10 acc gần nhất:\n\n`
-            if (runs.length === 0) text += `Không có lịch sử chạy nào.`;
-            else {
-                for (const run of runs) {
-                    const game = await db('games').where('id', '=', run.game_id).first();
-                    text += `🎮 ${game.name} | ${run.username} | ${run.status ? `${run.bank}` : 'Đang chạy'}\n`;
-                }
-            }
 
 
+            await getHistoryGames(chatId, target)
             return await sendMessage(chatId, text);
         }
 
