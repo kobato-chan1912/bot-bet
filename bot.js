@@ -149,7 +149,7 @@ async function ensureUser(telegramId, username) {
                 telegram_username: username,
                 balance: 0
             });
-        } catch (error) {}
+        } catch (error) { }
 
     }
 
@@ -245,7 +245,7 @@ bot.on('callback_query', async (query) => {
             const balance = user?.balance || 0;
 
             try {
-                return bot.editMessageText(`💰 Số dư hiện tại của bạn là: ${balance.toLocaleString()}đ`, {
+                await bot.editMessageText(`💰 Số dư hiện tại của bạn là: ${balance.toLocaleString()}đ`, {
                     chat_id: chatId,
                     message_id: messageId,
                     reply_markup: backKeyboard("info")
@@ -311,7 +311,7 @@ bot.on('callback_query', async (query) => {
             // lịch sử chạy 
 
             try {
-                return bot.editMessageText(text, {
+               await bot.editMessageText(text, {
                     chat_id: chatId,
                     message_id: messageId,
                     reply_markup: backKeyboard("info")
@@ -790,7 +790,7 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
 
 });
 
-bot.on("polling_error", (err) => {});
+bot.on("polling_error", (err) => { });
 
 
 // Crawl bank transactions every 5 minutes
