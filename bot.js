@@ -41,6 +41,7 @@ async function sendMessage(chatId, text, options = {}) {
 
 
 // viết hàm trả về excel nguyên cả bảng runs 
+// Xuất toàn bộ bảng runs, mỗi trạng thái là một sheet riêng
 async function exportAllRunsToExcel(chatId) {
     const runs = await db('runs').orderBy('created_at', 'desc').get();
     if (!runs.length) {
@@ -58,37 +59,48 @@ async function exportAllRunsToExcel(chatId) {
     const gameMap = {};
     games.forEach(g => gameMap[g.id] = g);
 
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet('All Runs');
-
-    sheet.columns = [
-        { header: 'ID', key: 'id', width: 8 },
-        { header: 'User', key: 'user', width: 20 },
-        { header: 'Game', key: 'game', width: 18 },
-        { header: 'Username', key: 'username', width: 25 },
-        { header: 'Status', key: 'status', width: 15 },
-        { header: 'Note', key: 'note', width: 25 },
-        { header: 'Created At', key: 'created_at', width: 22 }
-    ];
-
+    // Gom nhóm theo trạng thái
+    const grouped = {};
     for (const run of runs) {
-        sheet.addRow({
-            id: run.id,
-            user: userMap[run.user_id]?.telegram_username || run.user_id,
-            game: gameMap[run.game_id]?.name || run.game_id,
-            username: run.username,
-            status: run.status || 'Đang chạy',
-            note: run.note || '',
-            created_at: new Date(run.created_at).toLocaleString()
+        const status = run.status || 'Đang chạy';
+        if (!grouped[status]) grouped[status] = [];
+        grouped[status].push(run);
+    }
+
+    const workbook = new ExcelJS.Workbook();
+
+    for (const status in grouped) {
+        const sheet = workbook.addWorksheet(status);
+
+        sheet.columns = [
+            { header: 'ID', key: 'id', width: 8 },
+            { header: 'User', key: 'user', width: 20 },
+            { header: 'Game', key: 'game', width: 18 },
+            { header: 'Username', key: 'username', width: 25 },
+            { header: 'Status', key: 'status', width: 15 },
+            { header: 'Note', key: 'note', width: 25 },
+            { header: 'Created At', key: 'created_at', width: 22 }
+        ];
+
+        for (const run of grouped[status]) {
+            sheet.addRow({
+                id: run.id,
+                user: userMap[run.user_id]?.telegram_username || run.user_id,
+                game: gameMap[run.game_id]?.name || run.game_id,
+                username: run.username,
+                status: run.status || 'Đang chạy',
+                note: run.note || '',
+                created_at: new Date(run.created_at).toLocaleString()
+            });
+        }
+
+        sheet.eachRow((row, rowNumber) => {
+            row.font = { name: 'Arial', size: 12 };
         });
     }
 
-    sheet.eachRow((row, rowNumber) => {
-        row.font = { name: 'Arial', size: 12 };
-    });
-
     const buffer = await workbook.xlsx.writeBuffer();
-    const filename = `full_accounts_${Date.now()}.xlsx`;
+    const filename = `full_accounts__${Date.now()}.xlsx`;
 
     await bot.sendDocument(
         chatId,
