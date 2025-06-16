@@ -614,8 +614,6 @@ bot.on('message', async (msg) => {
             let game = await db('games').where('id', '=', gameId).first();
             if (!game || !user) return;
 
-            console.log('rree')
-
             // Parse accounts
             let lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
 
@@ -627,7 +625,7 @@ bot.on('message', async (msg) => {
                     .where('user_id', '=', user.id)
                     .where('game_id', '=', game.id)
                     .where('username', '=', username)
-                    .whereRaw("COALESCE(status, '') NOT IN (?, ?, ?, ?)", ['done', 'refunding', 'refunded', 'account_error'])
+                    .whereNull('status')
                     .first();
 
 
@@ -853,11 +851,28 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
             const game = await db('games').where('id', '=', gameId).first();
             if (!game) return await sendMessage(chatId, "❗ Không tìm thấy game.");
 
+
+            let existedAccounts = [];
+
+
             if (game.is_need_bank) {
                 // Mỗi acc: username bank (cách nhau bởi dấu cách)
                 for (const acc of accountsArr) {
                     const [username, bank] = acc.split(/\s+/);
                     if (!username || !bank) continue;
+                    let query = db('runs')
+                        .where('game_id', '=', game.id)
+                        .where('username', '=', username)
+                        .whereNull("status")
+
+                    const existed = await query.first();
+                    if (existed) {
+                        existedAccounts.push(username);
+                        continue;
+                    }
+
+
+
                     await db('runs').insert({
                         user_id: user.id,
                         game_id: game.id,
@@ -870,6 +885,17 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
                 // Chỉ username
                 for (const acc of accountsArr) {
 
+                    let query = db('runs')
+                        .where('game_id', '=', game.id)
+                        .where('username', '=', acc)
+                        .whereNull("status")
+
+                    const existed = await query.first();
+                    if (existed) {
+                        existedAccounts.push(acc);
+                        continue;
+                    }
+
 
                     await db('runs').insert({
                         user_id: user.id,
@@ -879,7 +905,12 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
                     });
                 }
             }
-            return await sendMessage(chatId, `✅ Đã thêm ${accountsArr.length} tài khoản vào game ${game.name}.`);
+
+            let msg = `✅ Đã thêm ${accountsArr.length - existedAccounts.length} tài khoản vào game ${game.name}.`;
+            if (existedAccounts.length) {
+                msg += `\n\n❗ Các tài khoản đã tồn tại và không được thêm: ${existedAccounts.join(', ')}`;
+            }
+            return await sendMessage(chatId, msg);
         }
 
         if (command === 'deleteacc') {
