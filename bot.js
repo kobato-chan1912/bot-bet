@@ -3,6 +3,10 @@ const db = require("./database.js")
 const usersState = {};
 const checkBankTransactions = require('./cron.js');
 const ExcelJS = require('exceljs');
+const { all } = require('axios');
+
+
+
 
 const homeText = `🎁 HỖ TRỢ NHẬP CODE – HOÀN 100% CHO KHÁCH MỚI 🎁
 Áp dụng cho nhà cái:
@@ -36,15 +40,104 @@ async function sendMessage(chatId, text, options = {}) {
 }
 
 
-async function getHistoryGames(chatId, user) {
+// viết hàm trả về excel nguyên cả bảng runs 
+async function exportAllRunsToExcel(chatId) {
+    const runs = await db('runs').orderBy('created_at', 'desc').get();
+    if (!runs.length) {
+        return sendMessage(chatId, "❗ Không có dữ liệu trong bảng runs.");
+    }
+
+    // Lấy thông tin user và game cho mỗi run
+    const userIds = [...new Set(runs.map(r => r.user_id))];
+    const gameIds = [...new Set(runs.map(r => r.game_id))];
+    const users = await db('users').whereIn('id', userIds).get();
+    const games = await db('games').whereIn('id', gameIds).get();
+
+    const userMap = {};
+    users.forEach(u => userMap[u.id] = u);
+    const gameMap = {};
+    games.forEach(g => gameMap[g.id] = g);
+
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('All Runs');
+
+    sheet.columns = [
+        { header: 'ID', key: 'id', width: 8 },
+        { header: 'User', key: 'user', width: 20 },
+        { header: 'Game', key: 'game', width: 18 },
+        { header: 'Username', key: 'username', width: 25 },
+        { header: 'Status', key: 'status', width: 15 },
+        { header: 'Note', key: 'note', width: 25 },
+        { header: 'Created At', key: 'created_at', width: 22 }
+    ];
+
+    for (const run of runs) {
+        sheet.addRow({
+            id: run.id,
+            user: userMap[run.user_id]?.telegram_username || run.user_id,
+            game: gameMap[run.game_id]?.name || run.game_id,
+            username: run.username,
+            status: run.status || 'Đang chạy',
+            note: run.note || '',
+            created_at: new Date(run.created_at).toLocaleString()
+        });
+    }
+
+    sheet.eachRow((row, rowNumber) => {
+        row.font = { name: 'Arial', size: 12 };
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const filename = `full_accounts_${Date.now()}.xlsx`;
+
+    await bot.sendDocument(
+        chatId,
+        Buffer.from(buffer),
+        {
+            caption: "📊 Toàn bộ dữ liệu đang chạy"
+        },
+        {
+            filename,
+            contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        }
+    );
+}
+
+
+
+async function getHistoryGames(chatId, user, message_id = null) {
     const runs = await db('runs')
         .where('user_id', '=', user.id)
         .orderBy('created_at', 'desc')
         .get();
 
-    if (!runs.length) {
-        return sendMessage(chatId, "❗ Không có lịch sử chạy nào.");
+
+    if (message_id !== null) {
+        const limitRuns = await db('runs')
+            .where('user_id', '=', user.id)
+            .orderBy('created_at', 'desc')
+            .limit(10)
+            .get();
+        let text = `\n📊 Lịch sử chạy (10 acc gần nhất):\n\n`
+        if (limitRuns.length === 0) text += `Không có lịch sử chạy nào.`;
+        else {
+            for (const run of limitRuns) {
+                const game = await db('games').where('id', '=', run.game_id).first();
+                text += `🎮 ${game.name} | ${run.username} | ${run.status ?? 'Đang chạy'}\n`;
+            }
+        }
+
+        try {
+            await bot.editMessageText(text, {
+                chat_id: chatId,
+                message_id: message_id,
+                reply_markup: backKeyboard("info")
+            });
+        } catch (error) {
+
+        }
     }
+
 
     // Lấy danh sách gameId mà user có dữ liệu
     const gameIds = [...new Set(runs.map(r => r.game_id))];
@@ -311,7 +404,7 @@ bot.on('callback_query', async (query) => {
             // lịch sử chạy 
 
             try {
-               await bot.editMessageText(text, {
+                await bot.editMessageText(text, {
                     chat_id: chatId,
                     message_id: messageId,
                     reply_markup: backKeyboard("info")
@@ -328,7 +421,7 @@ bot.on('callback_query', async (query) => {
 
 
         if (data === 'history_games') {
-            await getHistoryGames(chatId, user)
+            await getHistoryGames(chatId, user, messageId)
         }
 
 
@@ -494,9 +587,12 @@ bot.on('message', async (msg) => {
 
 
         if (state && state.startsWith('refund_')) {
+
             let gameId = state.split('_')[1];
             let game = await db('games').where('id', '=', gameId).first();
             if (!game || !user) return;
+
+            console.log('rree')
 
             // Parse accounts
             let lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -509,37 +605,31 @@ bot.on('message', async (msg) => {
                     .where('user_id', '=', user.id)
                     .where('game_id', '=', game.id)
                     .where('username', '=', username)
-                    .whereRaw("COALESCE(status, '') NOT IN (?, ?)", ['done', 'refunded'])
+                    .whereRaw("COALESCE(status, '') NOT IN (?, ?, ?)", ['done', 'refunding', 'refunded'])
                     .first();
 
 
                 if (run) {
                     // Refund 80% giá game
-                    let refundAmount = game.price * 0.8;
-                    await db('users').where('id', '=', user.id).increment('balance', refundAmount);
-                    await db('transactions').insert({
-                        user_id: user.id,
-                        amount: refundAmount,
-                        status: 1,
-                        created_at: new Date(),
-                        note: `Refund tài khoản ${username} game ${game.name}`
-                    });
+
                     // Đánh dấu run đã refund (nếu muốn)
-                    await db('runs').where('id', '=', run.id).update({ status: 'refunded' });
+                    await db('runs').where('id', '=', run.id).update({ status: 'refunding' });
                     refunded++;
                 } else {
                     notFound.push(username);
                 }
             }
 
-            let msg = `✅ Đã refund ${refunded} tài khoản (${(refunded * Math.floor(game.price * 0.7)).toLocaleString()}đ) cho game ${game.name}.`;
+            let msg = `✅ Đã refund ${refunded} tài khoản (${(refunded * Math.floor(game.price * 0.7)).toLocaleString()}đ) cho game ${game.name}. Refund sẽ được cập nhật tối đa sau 30 giây.`;
             if (notFound.length) {
                 msg += `\n\n❗ Không tìm thấy hoặc đã done/refunded: ${notFound.join(', ')}`;
             }
             await sendMessage(chatId, msg);
             usersState[chatId] = null;
         }
-    } catch (error) { }
+    } catch (error) {
+        console.log(error)
+    }
 
 
 });
@@ -570,17 +660,121 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
         // Role check
         const adminCmds = [
             'congtien', 'trutien', 'resetbalance', 'addacc', 'deleteacc', 'viewlogs', 'refund',
-            'ban', 'unban', 'setadmin', 'unsetadmin', 'broadcast', 'viewbalance', 'stats', 'setprice'
+            'ban', 'unban', 'setadmin', 'unsetadmin', 'broadcast', 'viewbalance', 'stats', 'setprice', 'viewaccs' , 'checkhoantien'
         ];
         const modCmds = [
             'congtien', 'refund', 'addacc', 'deleteacc', 'viewlogs', 'viewbalance', 'broadcast', 'ban'
         ];
-        if (role !== 'admin' && (adminCmds.includes(command) && role !== 'mod' && modCmds.includes(command))) {
-            return await sendMessage(chatId, "❗ Bạn không có quyền sử dụng lệnh này.");
+
+
+
+        if (role === 'admin' || command == 'start') {
+            ////// 
+        } else {
+            // Nếu user có allowed_commands thì chỉ cho phép các lệnh này
+            let allowed = [];
+            if (user.allowed_commands) {
+                allowed = JSON.parse(user.allowed_commands);
+            }
+            if (!allowed.includes(command)) {
+                return sendMessage(chatId, "❗ Bạn không có quyền sử dụng lệnh này.");
+            }
         }
-        if (role !== 'admin' && role !== 'mod') {
-            return; // Ignore all commands for non-admin/mod
+
+
+        if (command === 'chidinhlenh' && role === 'admin') {
+            const [mention, ...cmds] = args.split(/\s+/);
+            const user = await getUserByMention(mention);
+            if (!user) return sendMessage(chatId, "❗ Không tìm thấy user.");
+            const allowed = cmds.join(' ').split(',').map(s => s.trim()).filter(Boolean);
+            console.log(allowed)
+            if (!allowed.length) return sendMessage(chatId, "❗ Bạn phải nhập ít nhất 1 lệnh.");
+            await db('users').where('id', "=", user.id).update({
+                allowed_commands: JSON.stringify(allowed)
+            });
+            return sendMessage(chatId, `✅ Đã chỉ định lệnh cho @${user.telegram_username}: ${allowed.join(', ')}`);
         }
+
+
+        if (command === 'xoachidinh' && role === 'admin') {
+            const [mention, ...cmds] = args.split(/\s+/);
+            const user = await getUserByMention(mention);
+            if (!user) return sendMessage(chatId, "❗ Không tìm thấy user.");
+            let allowed = [];
+            if (user.allowed_commands) {
+                allowed = JSON.parse(user.allowed_commands);
+            }
+            const removeCmds = cmds.join(' ').split(',').map(s => s.trim()).filter(Boolean);
+            allowed = allowed.filter(cmd => !removeCmds.includes(cmd));
+            await db('users').where('id', '=', user.id).update({
+                allowed_commands: allowed.length ? JSON.stringify(allowed) : null
+            });
+            return sendMessage(chatId, `✅ Đã xóa chỉ định lệnh cho @${user.telegram_username}: ${removeCmds.join(', ')}`);
+        }
+
+
+
+        // ...existing code...
+
+        if (command === 'dashboard') {
+
+
+            try {
+                // Tổng số lượng người dùng
+                const totalUsers = await db('users').count('id').first();
+
+                // Tổng số đơn hàng đang chạy của từng loại game (status = null)
+                const runningOrders = await db('runs')
+                    .select('game_id')
+                    .whereNull('status')
+                    .count('id')
+                    .groupBy('game_id').get();
+
+
+
+
+
+
+                // Lấy tên game
+                const gameIds = runningOrders.map(r => r.game_id);
+                console.log(gameIds)
+                const games = await db('games').whereIn('id', gameIds).get();
+                const gameMap = {};
+                games.forEach(g => gameMap[g.id] = g.name);
+
+                // Tổng số đơn đã refund
+                const refundedOrders = await db('runs').where('status', '=', 'refunded').count('id').first();
+
+                // Tổng số tiền khách đã nạp (note = Nạp tiền)
+                const totalDeposit = await db('transactions')
+                    .where('note', '=', 'Nạp tiền')
+                    .where('status', '=', 1)
+                    .sum('amount')
+                    .first();
+
+                let text = `📊 DASHBOARD\n\n`;
+                text += `👤 Tổng số người dùng: ${totalUsers.count}\n\n`;
+                text += `🟢 Đơn hàng đang chạy:\n`;
+                if (runningOrders.length === 0) {
+                    text += `- Không có đơn nào đang chạy\n`;
+                } else {
+                    for (const r of runningOrders) {
+                        text += `- ${gameMap[r.game_id] || r.game_id}: ${r.count}\n`;
+                    }
+                }
+                text += `\n♻️ Tổng số đơn đã refund: ${refundedOrders.count}\n`;
+                text += `\n💰 Tổng số tiền khách đã nạp: ${(totalDeposit.sum || 0).toLocaleString()}đ`;
+
+                return await sendMessage(chatId, text);
+            } catch (error) {
+               
+            }
+
+
+        }
+
+
+
 
         // Command handlers
         if (command === 'congtien') {
@@ -679,6 +873,13 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
                 .whereIn('username', usernames)
                 .delete();
             return await sendMessage(chatId, `✅ Đã xoá ${deleted} tài khoản khỏi game ${game.name}.`);
+        }
+
+        if (command === "viewaccs") {
+
+
+            return await exportAllRunsToExcel(chatId)
+
         }
 
         if (command === 'viewlogs') {
@@ -795,3 +996,37 @@ bot.on("polling_error", (err) => { });
 
 // Crawl bank transactions every 5 minutes
 setInterval(checkBankTransactions, 30 * 1000);
+
+
+
+async function checkRefunds() {
+    // 1. Lấy tất cả các runs đang refunding
+    const refundingRuns = await db('runs').where('status', '=', 'refunding').get();
+    for (const run of refundingRuns) {
+        // 2. Lấy user và game tương ứng
+        const user = await db('users').where('id', '=', run.user_id).first();
+        const game = await db('games').where('id', '=', run.game_id).first();
+        if (!user || !game) continue;
+
+        // 3. Tính số tiền refund (80%)
+        const refundAmount = game.price * 0.8;
+
+        // 4. Cộng tiền cho user
+        await db('users').where('id', '=', user.id).increment('balance', refundAmount);
+
+        // 5. Ghi log giao dịch
+        await db('transactions').insert({
+            user_id: user.id,
+            amount: refundAmount,
+            status: 1,
+            created_at: new Date(),
+            note: `Refund tài khoản ${run.username} game ${game.name}`
+        });
+
+        // 6. Đánh dấu run đã refund xong
+        await db('runs').where('id', '=', run.id).update({ status: 'refunded' });
+    }
+}
+
+// Chạy mỗi 30 giây
+setInterval(checkRefunds, 30 * 1000);

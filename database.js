@@ -22,6 +22,7 @@ class QueryBuilder {
     this._params = [];
     this._limit = null;
     this._order = null;
+    this._group = null;
   }
 
   select(fields) {
@@ -76,10 +77,45 @@ class QueryBuilder {
     return this;
   }
 
+
+  whereNull(column) {
+    this._wheres.push(`${column} IS NULL`);
+    return this;
+  }
+
+  whereNotNull(column) {
+    this._wheres.push(`${column} IS NOT NULL`);
+    return this;
+  }
+
+  count(column = '*', alias = 'count') {
+    if (this._select && this._select !== '*') {
+      this._select += `, COUNT(${column}) as ${alias}`;
+    } else {
+      this._select = `COUNT(${column}) as ${alias}`;
+    }
+    return this;
+  }
+
+
+  sum(column, alias = 'sum') {
+    this._select = `SUM(${column}) as ${alias}`;
+    return this;
+  }
+
+  groupBy(column) {
+    this._group = column;
+    return this;
+  }
+
+
   async get() {
     let sql = `SELECT ${this._select} FROM ${this.table}`;
     if (this._wheres.length) {
       sql += ` WHERE ${this._wheres.join(' AND ')}`;
+    }
+    if (this._group) {
+      sql += ` GROUP BY ${this._group}`;
     }
     if (this._order) {
       sql += ` ORDER BY ${this._order}`;
@@ -142,6 +178,10 @@ class QueryBuilder {
     const [result] = await pool.execute(sql, [amount, ...this._params]);
     return result.affectedRows;
   }
+
+
+
+
 
 
 
