@@ -565,7 +565,8 @@ bot.on('message', async (msg) => {
                 // Kiểm tra account đã tồn tại chưa (theo username, bank, user_id, game_id)
                 let query = db('runs')
                     .where('game_id', '=', game.id)
-                    .where('username', '=', acc.username);
+                    .where('username', '=', acc.username)
+                    .whereNull("status")
 
                 const existed = await query.first();
                 if (existed) {
