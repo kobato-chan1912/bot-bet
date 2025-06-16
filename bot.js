@@ -558,7 +558,20 @@ bot.on('message', async (msg) => {
             }
 
             // Add to runs and deduct balance
+            let existedAccounts = [];
+            let addedCount = 0;
+
             for (let acc of accounts) {
+                // Kiểm tra account đã tồn tại chưa (theo username, bank, user_id, game_id)
+                let query = db('runs')
+                    .where('game_id', '=', game.id)
+                    .where('username', '=', acc.username);
+
+                const existed = await query.first();
+                if (existed) {
+                    existedAccounts.push(acc.username);
+                    continue;
+                }
 
                 await db('transactions').insert({
                     user_id: user.id,
@@ -568,7 +581,6 @@ bot.on('message', async (msg) => {
                     note: `Mua code ${acc.username} cho ${game.name}`
                 });
 
-
                 await db('runs').insert({
                     user_id: user.id,
                     game_id: game.id,
@@ -576,12 +588,21 @@ bot.on('message', async (msg) => {
                     bank: acc.bank || null,
                     created_at: new Date()
                 });
-            }
-            await db('users').where('id', '=', user.id).update({
-                balance: user.balance - totalPrice
-            });
 
-            await sendMessage(chatId, `✅ Đã thêm ${accounts.length} tài khoản cho game "${game.name}". Số dư còn lại: ${(user.balance - totalPrice).toLocaleString()}đ`);
+                addedCount++;
+            }
+
+            if (addedCount > 0) {
+                await db('users').where('id', '=', user.id).update({
+                    balance: user.balance - (addedCount * game.price)
+                });
+            }
+
+            let msg = `✅ Đã thêm ${addedCount} tài khoản cho game "${game.name}". Số dư còn lại: ${(user.balance - (addedCount * game.price)).toLocaleString()}đ`;
+            if (existedAccounts.length) {
+                msg += `\n\n❗ Các tài khoản đã tồn tại và không được thêm: ${existedAccounts.join(', ')}`;
+            }
+            await sendMessage(chatId, msg);
             usersState[chatId] = null;
         }
 
@@ -605,7 +626,7 @@ bot.on('message', async (msg) => {
                     .where('user_id', '=', user.id)
                     .where('game_id', '=', game.id)
                     .where('username', '=', username)
-                    .whereRaw("COALESCE(status, '') NOT IN (?, ?, ?)", ['done', 'refunding', 'refunded'])
+                    .whereRaw("COALESCE(status, '') NOT IN (?, ?, ?, ?)", ['done', 'refunding', 'refunded', 'account_error'])
                     .first();
 
 
@@ -622,7 +643,7 @@ bot.on('message', async (msg) => {
 
             let msg = `✅ Đã refund ${refunded} tài khoản (${(refunded * Math.floor(game.price * 0.7)).toLocaleString()}đ) cho game ${game.name}. Refund sẽ được cập nhật tối đa sau 30 giây.`;
             if (notFound.length) {
-                msg += `\n\n❗ Không tìm thấy hoặc đã done/refunded: ${notFound.join(', ')}`;
+                msg += `\n\n❗ Tài khoản không thể refund: ${notFound.join(', ')}`;
             }
             await sendMessage(chatId, msg);
             usersState[chatId] = null;
@@ -660,7 +681,7 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
         // Role check
         const adminCmds = [
             'congtien', 'trutien', 'resetbalance', 'addacc', 'deleteacc', 'viewlogs', 'refund',
-            'ban', 'unban', 'setadmin', 'unsetadmin', 'broadcast', 'viewbalance', 'stats', 'setprice', 'viewaccs' , 'checkhoantien'
+            'ban', 'unban', 'setadmin', 'unsetadmin', 'broadcast', 'viewbalance', 'stats', 'setprice', 'viewaccs', 'checkhoantien'
         ];
         const modCmds = [
             'congtien', 'refund', 'addacc', 'deleteacc', 'viewlogs', 'viewbalance', 'broadcast', 'ban'
@@ -767,7 +788,7 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
 
                 return await sendMessage(chatId, text);
             } catch (error) {
-               
+
             }
 
 
