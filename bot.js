@@ -935,6 +935,7 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
             if (usernames.length === 0) return await sendMessage(chatId, "❗ Không có username nào hợp lệ.");
             const deleted = await db('runs')
                 .where('game_id', '=', gameId)
+                .where("status", "=", null)
                 .whereIn('username', usernames)
                 .delete();
             return await sendMessage(chatId, `✅ Đã xoá ${deleted} tài khoản khỏi game ${game.name}.`);
