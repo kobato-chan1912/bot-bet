@@ -10,7 +10,7 @@ const { all } = require('axios');
 
 const homeText = `🎁 HỖ TRỢ NHẬP CODE – HOÀN 100% CHO KHÁCH MỚI 🎁
 Áp dụng cho nhà cái:
-F8BET | SHBET | 8KBET | MB66 | NEW88 | JUN1 | JUN2 | J88
+F8BET | SHBET | 8KBET | MB66 | NEW88 | JUN1 | JUN2 | J88 | Hi88
 
 🧧 CODE 8KBET ~ J88 (RANDOM: 18 / 28 / 38)
 💸 Chỉ 5K / 1 lần nhập
@@ -18,11 +18,12 @@ F8BET | SHBET | 8KBET | MB66 | NEW88 | JUN1 | JUN2 | J88
 ✅ Giá rẻ nhất thị trường
 ✅ Uy tín tuyệt đối – Không lừa đảo
 🔈 ƯU ĐÃI ĐẶC BIỆT
-♻️ Auto tự động hoàn cho tài khoản bị lạm dụng .  
-📩 Liên hệ hỗ trợ: [@BeNi2kk]
+♻️ Auto tự động hoàn cho tài khoản bị lạm dụng .  
+📩 Liên hệ hỗ trợ: [@taotanghinhroi] [@beboo003]
 🛒 Mua code tại BOT: [@HUNTER_CODE_DEN_BOT]
-🔈THEO DÕI KÊNH https://t.me/+8FWzZ93BMQM2YTE1
+🔈THEO DÕI KÊNH 
 `;
+
 
 
 
