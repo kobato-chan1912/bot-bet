@@ -61,9 +61,20 @@ class QueryBuilder {
     if (!Array.isArray(values) || values.length === 0) {
       throw new Error('whereIn requires a non-empty array of values');
     }
-    const placeholders = values.map(() => '?').join(', ');
-    this._wheres.push(`${column} IN (${placeholders})`);
-    this._params.push(...values);
+    // Separate nulls and non-nulls
+    const nonNulls = values.filter(v => v !== null && v !== undefined);
+    const hasNull = values.some(v => v === null || v === undefined);
+
+    let clauseParts = [];
+    if (nonNulls.length > 0) {
+      const placeholders = nonNulls.map(() => '?').join(', ');
+      clauseParts.push(`${column} IN (${placeholders})`);
+    }
+    if (hasNull) {
+      clauseParts.push(`${column} IS NULL`);
+    }
+    this._wheres.push(`(${clauseParts.join(' OR ')})`);
+    this._params.push(...nonNulls);
     return this;
   }
 

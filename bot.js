@@ -807,7 +807,30 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
         }
 
 
+        if (command === 'refund') {
+            // /refund <gameId> <username>
+            const [gameId, username] = args.split(/\s+/);
+            if (!gameId || !username) return await sendMessage(chatId, "❗ Sai cú pháp. Ví dụ: /refund 1 username");
+            const game = await db('games').where('id', '=', gameId).first();
+            if (!game) return await sendMessage(chatId, "❗ Không tìm thấy game.");
 
+            // Chỉ hoàn 1 tài khoản/lần, tìm run trạng thái null hoặc account_error
+            const run = await db('runs')
+                .where('game_id', '=', game.id)
+                .where('username', '=', username)
+                .whereIn('status', [null, 'account_error'])
+                .first();
+
+            if (run) {
+                // Đánh dấu run đang refunding
+                await db('runs').where('id', '=', run.id).update({ status: 'refunding' });
+                const refundAmount = Math.floor(game.price * 0.8);
+                let msg = `✅ Đã gửi yêu cầu hoàn tiền tài khoản "${username}" (${refundAmount.toLocaleString()}đ) cho game ${game.name}. Lưu ý tiền sẽ về sau tối đa 30s.`;
+                return await sendMessage(chatId, msg);
+            } else {
+                return await sendMessage(chatId, `❗ Tài khoản ${username} của game ${game.name} không hợp lệ để hoàn tiền.`);
+            }
+        }
 
         // Command handlers
         if (command === 'congtien') {
@@ -1087,7 +1110,7 @@ async function checkRefunds() {
             amount: refundAmount,
             status: 1,
             created_at: new Date(),
-            note: `Refund tài khoản ${run.username} game ${game.name}`
+            note: `Refund tài khoản ${run.username} game ${game.name}_runid=${run.id}`
         });
 
         // 6. Đánh dấu run đã refund xong
