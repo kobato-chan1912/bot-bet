@@ -132,6 +132,8 @@ async function exportCustomRunsToExcel(gameIDS, chatId) {
         return sendMessage(chatId, "❗ Không có dữ liệu khả dụng có thể xuất.");
     }
 
+    await sendMessage(chatId, "Loading dữ liệu... Vui lòng chờ...");
+
     // Lấy thông tin game
     const gameIds = [...new Set(runs.map(r => r.game_id))];
     const games = await db('games').whereIn('id', gameIds).get();
@@ -1187,8 +1189,8 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
 
         if (command === 'xuatsimple') {
 
-            return await exportCustomRunsToExcel([1,2,3], chatId)
-            // return await exportCustomRunsToExcel([10, 11, 12], chatId)
+            // return await exportCustomRunsToExcel([1,2,3], chatId)
+            return await exportCustomRunsToExcel([10, 11, 12], chatId)
 
         }
 
