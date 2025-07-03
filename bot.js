@@ -117,6 +117,44 @@ async function exportAllRunsToExcel(chatId) {
 }
 
 
+async function exportCustomRunsToExcel(gameIDS, chatId) {
+    const runs = await db('runs')
+        .whereIn('game_id', gameIDS)
+        .orderBy('created_at', 'desc')
+        .get();
+
+    if (!runs.length) {
+        return sendMessage(chatId, "❗ Không có dữ liệu trong bảng runs cho các game đã chọn.");
+    }
+
+    // Lấy thông tin game
+    const gameIds = [...new Set(runs.map(r => r.game_id))];
+    const games = await db('games').whereIn('id', gameIds).get();
+    const gameMap = {};
+    games.forEach(g => gameMap[g.id] = g.name);
+
+    // Tạo nội dung txt
+    let content = '';
+    for (const run of runs) {
+        content += `[${gameMap[run.game_id] || run.game_id}][${run.username}]\n`;
+    }
+
+    const filename = `accounts_simple_${Date.now()}.txt`;
+    await bot.sendDocument(
+        chatId,
+        Buffer.from(content, 'utf8'),
+        {
+            caption: "📄 Danh sách tài khoản xuất Simple"
+        },
+        {
+            filename,
+            contentType: "text/plain"
+        }
+    );
+}
+
+
+
 
 async function getHistoryGames(chatId, user, message_id = null) {
     const runs = await db('runs')
@@ -714,6 +752,19 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
             }
         }
 
+        if (command !== ''){
+
+            let log = msg.text;
+            // lưu log vào user_commands
+            await db('user_commands').insert({
+                user_id: user.id,
+                command: log,
+                created_at: new Date()
+            });
+
+
+        }
+
 
         if (command === 'chidinhlenh' && role === 'admin') {
             const [mention, ...cmds] = args.split(/\s+/);
@@ -1025,15 +1076,54 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
         }
 
         if (command === 'broadcast') {
-            const content = args.trim();
-            if (!content) return await sendMessage(chatId, "❗ Nội dung không được để trống.");
-            const users = await db('users').where('status', '=', 1).get();
+            const content = msg.text.split('\n').slice(1).join('\n').trim();
+            if (!content) return await sendMessage(chatId, "❗ Nội dung không được để trống. Chú ý nội dung tin là xuống dòng sau /broadcast.");
+
+            // chỉnh content để có thể gửi xuống dòng, ví dụ 
+            // /broadcast
+            // chào ngày mới
+            // bạn khỏe không
+
+            const users = await db('users').whereNotNull("telegram_user_id").where('status', '=', 1).get();
+            await sendMessage(chatId, `✅ Đang gửi tin broadcast... Vui lòng không gửi lại và đợi trong giây lát...`);
             for (const u of users) {
                 try {
                     await sendMessage(u.telegram_user_id, `📢 Thông báo:\n\n${content}`);
                 } catch (e) { }
             }
             return await sendMessage(chatId, `✅ Đã gửi broadcast cho ${users.length} user.`);
+        }
+
+
+        // tính năng /checkacc : Ví dụ /checkac abcd1234 . thì hiện thông tin lịch sử run của user abcd1234 (full game), ngày giờ thêm , và tình trạng done,refund hay lạm dụng .
+
+        if (command === 'checkacc') {
+            const mention = args.trim();
+            const target = await getUserByMention(mention);
+            if (!target) return await sendMessage(chatId, "❗ Không tìm thấy user.");
+
+
+            // if (!findUser) return await sendMessage(chatId, `❗ Không tìm thấy tài khoản ${username} trong hệ thống.`);
+            const runs = await db('runs')
+                .where('user_id', '=', target.id)
+                .orderBy('created_at', 'desc')
+                .get();
+
+            const username = target.telegram_username;
+            let text = `📜 Lịch sử tài khoản "${username}":\n\n`;
+            for (const run of runs) {
+                const game = await db('games').where('id', '=', run.game_id).first();
+                text += `\n[${game ? game.name : 'Không rõ'}]`;
+                text += `[${new Date(run.created_at).toLocaleString()}]`;
+                text += `[${run.status || 'Đang chạy'}]`;
+                if (run.note !== null) {
+                    text += `[${run.note}]`;
+                }
+
+            }
+
+            return await sendMessage(chatId, text);
+
         }
 
         if (command === 'viewbalance') {
@@ -1076,6 +1166,40 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
             await db('games').where('id', '=', gameId).update({ price });
             return await sendMessage(chatId, `✅ Đã cập nhật giá game ${game.name} thành ${price.toLocaleString()}đ`);
         }
+
+
+        if (command === 'xuatsimple') {
+
+
+            return await exportCustomRunsToExcel([1, 2, 3], chatId)
+
+        }
+
+        // lệnh checkqtv = kiểm tra 20 lệnh gần nhất của user đó 
+        if (command === 'checkqtv') {
+            const mention = args.trim();
+            const target = await getUserByMention(mention);
+            if (!target) return await sendMessage(chatId, "❗ Không tìm thấy user.");
+            
+            // 20 lệnh trong bot ở bảng user_commands gần nhất của qtv đó
+            const commands = await db('user_commands')
+                .where('user_id', '=', target.id)
+                .orderBy('created_at', 'desc')
+                .limit(20)
+                .get();
+            if (!commands.length) return await sendMessage(chatId, "❗ Không có lệnh nào được ghi nhận.");
+            let text = `📜 20 lệnh gần nhất của @${target.telegram_username}:\n\n`
+            for (const cmd of commands) {
+                text += `[${cmd.command}] (${new Date(cmd.created_at).toLocaleString()})\n`;
+            }
+            
+
+            return await sendMessage(chatId, text);
+        }   
+
+
+
+
     } catch { }
 
 
@@ -1120,3 +1244,100 @@ async function checkRefunds() {
 
 // Chạy mỗi 30 giây
 setInterval(checkRefunds, 30 * 1000);
+
+
+// 
+// lắng nghe tin nhắn trong 1 group 
+// với trường mỗi dòng sẽ là [tên game][username của game][ket qua]
+// [lll99][username][45]
+// 
+// - Đầu tiên hãy lấy ra gameId của tên game đó 
+// - Đọc kết quả
+// + Nếu kết quả là số tự nhiên thì update cái status của run đó về done, note = số tự nhiên đó
+// + Nếu kết quả là ngược lại thì refund 80% số tiền, update status = account_error + kết quả chạy
+
+bot.on('message', async (msg) => {
+    try {
+        // Chỉ xử lý nếu là group (supergroup) và không phải bot gửi
+        if (!msg.chat || (msg.chat.type !== 'group' && msg.chat.type !== 'supergroup')) return;
+        if (msg.from.is_bot) return;
+        if (!msg.text) return;
+
+        const groupId = msg.chat.id;
+
+        if (groupId !== parseInt(process.env.SIMPLE_GROUP)) return;
+
+        // Mỗi dòng: [tên game][username][kết quả]
+        const lines = msg.text.split('\n').map(l => l.trim()).filter(Boolean);
+        for (const line of lines) {
+            const match = line.match(/^\[(.+?)\]\[(.+?)\]\[(.+?)\]\[(.+?)\]$/);
+            if (!match) continue;
+            let [_, gameName, username, code, result] = match;
+
+            // Lấy gameId từ tên game
+            const game = await db('games').where('name', '=', gameName).first();
+            if (!game) continue;
+
+            // Tìm run chưa hoàn thành
+            const run = await db('runs')
+                .where('game_id', '=', game.id)
+                .where('username', '=', username)
+                .whereNull('status')
+                .first();
+            if (!run) continue;
+
+            // get telegram_user_id từ run.user_id
+            const user = await db('users').where('id', '=', run.user_id).first();
+            if (!user) continue;
+            const chatId = user.telegram_user_id;
+
+            if (/^\d+$/.test(result) || result == "Đã nhận") {
+                // Kết quả là số tự nhiên: done
+
+                if (result == "Đã nhận") {
+                    result = "Đã nhận code " + code;
+                }
+
+                await db('runs').where('id', '=', run.id).update({
+                    status: 'done',
+                    note: result
+                });
+
+                let text = `📢 📢  Code mới ${game.name} đây: ${username} | ${result}`;
+                await sendMessage(chatId, text);
+
+            } else {
+                // Kết quả khác: refund 80%
+                await db('runs').where('id', '=', run.id).update({
+                    status: 'account_error',
+                    note: result
+                });
+
+                if (result.includes("đã lâu chưa phát sinh") ||
+                    result.includes("chưa cập nhật thông tin") ||
+                    result.includes("không thuộc nhóm phù hợp") ||
+                    result.includes("đã nhận thưởng hôm nay")
+                ) {
+
+                    await db('runs').where('id', '=', run.id).update({
+                        status: 'refunding'
+                    });
+
+
+                    let text = `📢 📢  Code mới ${game.name} đây: ${username} | ${result}`;
+                    await sendMessage(chatId, text);
+
+
+                    let msg = `✅ Refund tài khoản ${user} cho game ${game.name}. Refund sẽ được cập nhật tối đa sau 30 giây.`;
+                    await sendMessage(chatId, msg);
+                }
+
+
+
+
+            }
+        }
+    } catch (err) {
+        console.log('Group message error:', err);
+    }
+});
