@@ -1173,7 +1173,7 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
         if (command === 'xuatsimple') {
 
 
-            return await exportCustomRunsToExcel([1, 2, 3], chatId)
+            return await exportCustomRunsToExcel([10, 11, 12], chatId)
 
         }
 
