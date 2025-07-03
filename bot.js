@@ -122,11 +122,14 @@ async function exportAllRunsToExcel(chatId) {
 async function exportCustomRunsToExcel(gameIDS, chatId) {
     const runs = await db('runs')
         .whereIn('game_id', gameIDS)
+        .where("is_exported", "=", 0)
         .orderBy('created_at', 'desc')
         .get();
 
+
+
     if (!runs.length) {
-        return sendMessage(chatId, "❗ Không có dữ liệu trong bảng runs cho các game đã chọn.");
+        return sendMessage(chatId, "❗ Không có dữ liệu khả dụng có thể xuất.");
     }
 
     // Lấy thông tin game
@@ -136,10 +139,22 @@ async function exportCustomRunsToExcel(gameIDS, chatId) {
     games.forEach(g => gameMap[g.id] = g.name);
 
     // Tạo nội dung txt
-    let content = '';
+    const grouped = {};
     for (const run of runs) {
-        content += `[${gameMap[run.game_id] || run.game_id}][${run.username}]\n`;
+        const gameName = gameMap[run.game_id] || `Game ${run.game_id}`;
+        if (!grouped[gameName]) grouped[gameName] = [];
+        grouped[gameName].push(run.username);
+        await db('runs').where('id', '=', run.id).update({ is_exported: 1 }); // Đánh dấu đã xuất
     }
+
+
+    let content = '';
+    for (const gameName in grouped) {
+        content += `=== ${gameName} ===\n`;
+        content += grouped[gameName].join('\n') + '\n\n';
+    }
+
+
 
     const filename = `accounts_simple_${Date.now()}.txt`;
     await bot.sendDocument(
@@ -754,7 +769,7 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
             }
         }
 
-        if (command !== ''){
+        if (command !== '') {
 
             let log = msg.text;
             // lưu log vào user_commands
@@ -1172,8 +1187,8 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
 
         if (command === 'xuatsimple') {
 
-
-            return await exportCustomRunsToExcel([10, 11, 12], chatId)
+            return await exportCustomRunsToExcel([1,2,3], chatId)
+            // return await exportCustomRunsToExcel([10, 11, 12], chatId)
 
         }
 
@@ -1182,7 +1197,7 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
             const mention = args.trim();
             const target = await getUserByMention(mention);
             if (!target) return await sendMessage(chatId, "❗ Không tìm thấy user.");
-            
+
             // 20 lệnh trong bot ở bảng user_commands gần nhất của qtv đó
             const commands = await db('user_commands')
                 .where('user_id', '=', target.id)
@@ -1194,15 +1209,15 @@ bot.onText(/^\/(\w+)(.*)/, async (msg, match) => {
             for (const cmd of commands) {
                 text += `[${cmd.command}] (${new Date(cmd.created_at).toLocaleString()})\n`;
             }
-            
+
 
             return await sendMessage(chatId, text);
-        }   
+        }
 
 
 
 
-    } catch { }
+    } catch(error) {  }
 
 
 });
